@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoinDex Pro — Admin Monitor</title>
+<style>
+  :root {
+    --bg:#0b0e14; --panel:#141925; --panel2:#1b2233; --line:#232c40;
+    --mut:#8a93a6; --txt:#e6eaf2; --up:#2dd480; --down:#ff5c5c; --warn:#f5c04e; --acc:#5b8cff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.02em; }
+  .sub { color:var(--mut); font-size:11px; }
+  .gate { padding:18px; max-width:420px; }
+  .gate input { width:100%; padding:10px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; color:var(--txt); font-size:13px; }
+  .gate button, .bar button { margin-top:10px; padding:9px 14px; background:var(--acc); border:0; border-radius:8px; color:#fff; font-weight:600; cursor:pointer; font-size:13px; }
+  .bar { padding:8px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .bar button { margin:0; background:var(--panel2); border:1px solid var(--line); }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px; }
+  .ok { background:var(--up); } .bad { background:var(--down); } .unk { background:var(--mut); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; padding:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:0 0 10px; }
+  .big { font-size:26px; font-weight:700; }
+  .row { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--line); font-size:12px; }
+  .row:last-child { border-bottom:0; }
+  .mut { color:var(--mut); } .num { font-variant-numeric:tabular-nums; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { text-align:left; color:var(--mut); font-weight:500; font-size:10px; text-transform:uppercase; padding:4px 6px; border-bottom:1px solid var(--line); }
+  td { padding:4px 6px; border-bottom:1px solid var(--line); }
+  .pill { padding:1px 7px; border-radius:10px; font-size:10px; }
+  .pill.ok { background:rgba(45,212,128,.15); color:var(--up); }
+  .pill.bad { background:rgba(255,92,92,.15); color:var(--down); }
+  .pill.warn { background:rgba(245,192,78,.15); color:var(--warn); }
+  .hide { display:none; }
+  .err { color:var(--down); font-size:11px; padding:0 18px 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CoinDex Pro · Admin Monitor</h1>
+  <span class="sub" id="lastUpdate">—</span>
+  <span class="sub" id="autostat" style="margin-left:auto">polling every 30s</span>
+</header>
+
+<div class="gate" id="gate">
+  <p class="sub">Enter ADMIN_KEY and the worker base URL to begin.</p>
+  <input id="baseUrl" placeholder="https://coindex-proxy-v2.<account>.workers.dev" style="margin-bottom:8px"/>
+  <input id="adminKey" type="password" placeholder="ADMIN_KEY"/>
+  <button id="connect">Connect</button>
+  <div class="err" id="gateErr"></div>
+</div>
+
+<div class="hide" id="app">
+  <div class="bar">
+    <span><span class="dot unk" id="d-api"></span>API</span>
+    <span><span class="dot unk" id="d-db"></span>DB</span>
+    <span><span class="dot unk" id="d-cache"></span>Cache</span>
+    <button id="refresh">Refresh now</button>
+    <button id="logout">Disconnect</button>
+  </div>
+  <div class="grid">
+    <div class="card"><h2>Tokens Tracked</h2><div class="big" id="mTokens">—</div><div class="mut" id="mCandles"></div></div>
+    <div class="card"><h2>Active Anomalies (24h)</h2><div class="big" id="mAnom24">—</div><div class="mut">across all subtypes</div></div>
+    <div class="card"><h2>Avg Provider Reliability</h2><div class="big" id="mRel">—</div><div class="mut" id="mTerms"></div></div>
+    <div class="card"><h2>Ingest / API Health</h2><div class="big" id="ingestState">—</div><div class="mut" id="ingestSub"></div></div>
+    <div class="card"><h2>DB Health</h2><div class="big" id="dbState">—</div><div class="mut" id="dbSub"></div></div>
+    <div class="card"><h2>Cache Freshness</h2><div class="big" id="cacheState">—</div><div class="mut" id="cacheSub"></div></div>
+    <div class="card"><h2>Worker Latency</h2><div id="latencyBox"><div class="mut">—</div></div></div>
+    <div class="card"><h2>Anomalies</h2><div class="big" id="anomCount">—</div><div class="mut">recent (last 50)</div></div>
+    <div class="card"><h2>Backfill Progress</h2><div class="big" id="bfPct">—</div><div class="mut" id="bfSub"></div></div>
+    <div class="card" style="grid-column:1/-1"><h2>Provider Reliability</h2><table id="provTable"><thead><tr><th>Provider</th><th>Success</th><th>Latency</th><th>Rate-limits</th><th>Integrity</th><th>Reliability</th></tr></thead><tbody></tbody></table></div>
+    <div class="card" style="grid-column:1/-1"><h2>Recent Anomalies</h2><table id="anomTable"><thead><tr><th>Time</th><th>Token</th><th>Type</th><th>Severity</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Top Gainers (7d)</h2><table id="gainersTable"><thead><tr><th>Token</th><th>7d</th><th>30d</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Volatility Leaders</h2><table id="volTable"><thead><tr><th>Token</th><th>Daily σ</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Flow Alerts</h2><table id="flowTable"><thead><tr><th>Time</th><th>Token</th><th>Type</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Trending Searches</h2><table id="trendTable"><thead><tr><th>Term</th><th>Count</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Provider Drift</h2><table id="driftTable"><thead><tr><th>Time</th><th>Provider</th><th>Drop</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Search Insights — Rising</h2><table id="risingTable"><thead><tr><th>Term</th><th>Δ</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Search Insights — Dead</h2><table id="deadTable"><thead><tr><th>Term</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Conviction Distribution</h2><div id="convDist"><div class="mut">—</div></div></div>
+    <div class="card"><h2>Top Conviction Movers</h2><table id="convMovers"><thead><tr><th>Token</th><th>Score</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Conviction Decay Alerts</h2><table id="convDecay"><thead><tr><th>Time</th><th>Token</th><th>Drop</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Execution Action Distribution</h2><div id="execDist"><div class="mut">—</div></div></div>
+    <div class="card"><h2>Best Risk/Reward Plans</h2><table id="execRR"><thead><tr><th>Token</th><th>Action</th><th>R:R</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Failed Plan Tracker</h2><table id="execFail"><thead><tr><th>Time</th><th>Token</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Allocation Distribution</h2><div id="allocDist"><div class="mut">—</div></div></div>
+    <div class="card"><h2>Capital Utilization</h2><div id="allocCap"><div class="mut">—</div></div></div>
+    <div class="card"><h2>Risk Concentration</h2><table id="allocRisk"><thead><tr><th>Token</th><th>Pos %</th><th>Heat</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Heat Anomaly Tracker</h2><table id="allocHeat"><thead><tr><th>Time</th><th>Token</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Learning Performance</h2><div id="learnPerf"><div class="mut">—</div></div></div>
+    <div class="card"><h2>Best Setups</h2><table id="learnBest"><thead><tr><th>Setup</th><th>Win%</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Worst Setups</h2><table id="learnWorst"><thead><tr><th>Setup</th><th>Win%</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Failure Clusters</h2><table id="learnFail"><thead><tr><th>Time</th><th>Token</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Strategy Distribution</h2><div id="stratDist"><div class="mut">—</div></div></div>
+    <div class="card"><h2>Best Strategies</h2><table id="stratBest"><thead><tr><th>Strategy</th><th>Avg Score</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Worst Strategies</h2><table id="stratWorst"><thead><tr><th>Strategy</th><th>Avg Score</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Capital by Strategy</h2><table id="stratCap"><thead><tr><th>Strategy</th><th>Capital</th></tr></thead><tbody></tbody></table></div>
+    <div class="card"><h2>Strategy Failure Tracker</h2><table id="stratFail"><thead><tr><th>Time</th><th>Token</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="err" id="appErr"></div>
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>
